@@ -81,6 +81,12 @@
     .secondary { min-height: 46px; padding: 0 16px; border-radius: 13px; border: 1px solid var(--border); background: transparent; font-weight: 650; white-space: nowrap; }
     .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 20px 0; }
     .summary-number { font-size: 22px; font-weight: 800; }
+    #summary-screen .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rating { margin: 12px 0; color: var(--accent); font-size: clamp(88px, 22vw, 124px); font-weight: 900; line-height: 1; }
+    .rating[data-rating="S"] { color: #facc15; }
+    .rating[data-rating="A"], .rating[data-rating="B"] { color: var(--good); }
+    .rating[data-rating="F"] { color: var(--bad); }
+    .reflex-stat { grid-column: 1 / -1; margin-top: 8px; font-variant-numeric: tabular-nums; }
     .summary-label { margin-top: 4px; color: var(--muted); font-size: 12px; }
     .summary-detail { margin: 7px 0; color: var(--muted); font-size: 14px; }
     .summary-detail strong { color: var(--text); }
@@ -100,7 +106,7 @@
         <div class="pair"><span id="low">1</span> vs <span id="high">2</span></div>
       </div>
       <div class="stats">
-        <div><span class="muted">Score</span> <strong id="score">0</strong></div>
+        <div id="score-stat"><span class="muted">Score</span> <strong id="score">0</strong></div>
         <div><span class="muted">Streak</span> <strong id="streak">0</strong></div>
       </div>
     </div>
@@ -135,10 +141,11 @@
         <div class="card">
           <div class="muted">Level complete</div>
           <h2 id="summary-pair">1 vs 2</h2>
+          <div id="summary-rating" class="rating" aria-label="Rating F" data-rating="F">F</div>
           <div class="summary-grid">
             <div><div id="summary-correct" class="summary-number">0/10</div><div class="summary-label">Correct</div></div>
-            <div><div id="summary-points" class="summary-number">0</div><div class="summary-label">Points</div></div>
             <div><div id="summary-streak" class="summary-number">0</div><div class="summary-label">Best streak</div></div>
+            <div class="reflex-stat"><div id="summary-reflex" class="summary-number">avg 0.000s</div><div class="summary-label">Average reflex</div></div>
           </div>
           <div class="summary-detail">Time limit: <strong id="summary-time">1.0s</strong></div>
           <div class="summary-detail">Next: <strong id="next-pair">2 vs 3</strong></div>
@@ -198,7 +205,8 @@
       const activeLimitEl = document.querySelector("#active-limit");
       const summaryPairEl = document.querySelector("#summary-pair");
       const summaryCorrectEl = document.querySelector("#summary-correct");
-      const summaryPointsEl = document.querySelector("#summary-points");
+      const summaryRatingEl = document.querySelector("#summary-rating");
+      const summaryReflexEl = document.querySelector("#summary-reflex");
       const summaryStreakEl = document.querySelector("#summary-streak");
       const summaryTimeEl = document.querySelector("#summary-time");
       const nextPairEl = document.querySelector("#next-pair");
@@ -222,7 +230,7 @@
       let totalAttempts = 0;
       let levelCorrect = 0;
       let levelBestStreak = 0;
-      let levelStartingScore = 0;
+      let levelResponseTime = 0;
       let answer = 1;
       let active = false;
       let locked = false;
@@ -278,6 +286,7 @@
           screen.classList.toggle("hidden", screen !== panel);
         }
         field.classList.toggle("showing-panel", panel !== null);
+        document.querySelector("#score-stat").classList.toggle("hidden", panel === summaryScreen);
       }
 
       function placeDots(count) {
@@ -345,7 +354,9 @@
 
       function finishRound(choice) {
         if (!active || locked) return;
-        if (performance.now() - roundStartedAt >= timeLimit) choice = null;
+        const elapsed = Math.max(0, performance.now() - roundStartedAt);
+        if (elapsed >= timeLimit) choice = null;
+        levelResponseTime += choice === null ? timeLimit : Math.min(elapsed, timeLimit);
         locked = true;
         if (animationFrame !== null) cancelAnimationFrame(animationFrame);
         leftButton.disabled = true;
@@ -387,10 +398,13 @@
         clearDots();
         field.classList.remove("good", "bad");
         timerBar.style.transform = "scaleX(0)";
-        const levelPoints = score - levelStartingScore;
+        const rating = ({ 10: "S", 9: "A", 8: "B", 7: "C", 6: "D" })[levelCorrect] || "F";
         summaryPairEl.textContent = `${level} vs ${level + 1}`;
         summaryCorrectEl.textContent = `${levelCorrect}/10`;
-        summaryPointsEl.textContent = levelPoints;
+        summaryRatingEl.textContent = rating;
+        summaryRatingEl.dataset.rating = rating;
+        summaryRatingEl.setAttribute("aria-label", `Rating ${rating}`);
+        summaryReflexEl.textContent = `avg ${(levelResponseTime / round / 1000).toFixed(3)}s`;
         summaryStreakEl.textContent = levelBestStreak;
         summaryTimeEl.textContent = formatTime(timeLimit);
         nextPairEl.textContent = `${level + 1} vs ${level + 2}`;
@@ -420,7 +434,7 @@
         round = 0;
         levelCorrect = 0;
         levelBestStreak = 0;
-        levelStartingScore = score;
+        levelResponseTime = 0;
         updateUI();
         startRound();
         document.querySelector("#game").scrollIntoView({ block: "start" });
@@ -438,7 +452,7 @@
         totalAttempts = 0;
         levelCorrect = 0;
         levelBestStreak = 0;
-        levelStartingScore = 0;
+        levelResponseTime = 0;
         updateUI();
         startRound();
         document.querySelector("#game").scrollIntoView({ block: "start" });
@@ -457,7 +471,7 @@
         totalAttempts = 0;
         levelCorrect = 0;
         levelBestStreak = 0;
-        levelStartingScore = 0;
+        levelResponseTime = 0;
         clearDots();
         field.classList.remove("good", "bad");
         leftButton.disabled = true;
